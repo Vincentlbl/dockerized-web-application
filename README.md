@@ -42,7 +42,12 @@ Le schéma ci-dessous présente l'architecture multi-conteneurs de l'application
     Pour la communication HTTPS, vous devez générer un certificat et une clé privée. Placez-les dans le dossier `certs/`.
     ```bash
     # Exemple avec openssl
-    openssl req -x509 -newkey rsa:4096 -keyout certs/dev.key -out certs/dev.cert -sha256 -days 365 -nodes -subj "/CN=localhost"
+    MSYS_NO_PATHCONV=1 openssl req -x509 -newkey rsa:4096 \
+      -keyout certs/dev.key \
+      -out certs/dev.cert \
+      -days 365 \
+      -nodes \
+      -subj "/CN=localhost"
     ```
 
 ### 3.2. Build et Lancement
