@@ -11,8 +11,21 @@ import { logAction } from './audit.js';
 
 const app = express();
 
+const frontendOrigin = process.env.FRONTEND_ORIGIN || 'https://localhost:4173';
+const allowedOrigins = new Set([frontendOrigin]);
+if (frontendOrigin.startsWith('https://')) {
+  allowedOrigins.add(frontendOrigin.replace(/^https:/, 'http:'));
+} else if (frontendOrigin.startsWith('http://')) {
+  allowedOrigins.add(frontendOrigin.replace(/^http:/, 'https:'));
+}
+const allowedOriginList = Array.from(allowedOrigins);
+
 const corsOptions = {
-  origin: process.env.FRONTEND_ORIGIN || 'https://localhost:4173',
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.has(origin)) return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -24,7 +37,7 @@ app.use(helmet({
     useDefaults: true,
     directives: {
       defaultSrc: ["'self'"],
-      connectSrc: ["'self'", corsOptions.origin],
+      connectSrc: ["'self'", ...allowedOriginList],
       imgSrc: ["'self'", 'data:'],
       styleSrc: ["'self'", 'https:', "'unsafe-inline'"],
       frameAncestors: ["'none'"]
@@ -37,11 +50,14 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(morgan('combined'));
 
+const shouldSkipRateLimit = () => process.env.DISABLE_RATE_LIMIT === 'true';
+
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  skip: (req) => shouldSkipRateLimit() || req.method === 'OPTIONS'
 });
 
 app.use(apiLimiter);
@@ -127,3 +143,4 @@ app.use((req, res) => res.status(404).json({ message: 'Not found' }));
 app.listen(config.port, () => {
   console.log(`api-service listening on ${config.port}`);
 });
+

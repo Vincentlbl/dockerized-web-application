@@ -13,8 +13,20 @@ import { config } from './config.js';
 const app = express();
 app.set('trust proxy', 1);
 
+const allowedOrigins = new Set([config.frontendOrigin]);
+if (config.frontendOrigin.startsWith('https://')) {
+  allowedOrigins.add(config.frontendOrigin.replace(/^https:/, 'http:'));
+} else if (config.frontendOrigin.startsWith('http://')) {
+  allowedOrigins.add(config.frontendOrigin.replace(/^http:/, 'https:'));
+}
+const allowedOriginList = Array.from(allowedOrigins);
+
 const corsOptions = {
-  origin: config.frontendOrigin,
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.has(origin)) return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -26,7 +38,7 @@ app.use(helmet({
     useDefaults: true,
     directives: {
       defaultSrc: ["'self'"],
-      connectSrc: ["'self'", config.frontendOrigin],
+      connectSrc: ["'self'", ...allowedOriginList],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", 'https:', "'unsafe-inline'"],
       frameAncestors: ["'none'"]
@@ -48,7 +60,7 @@ const limiterConfig = {
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => `${req.ip}:${req.path.split('/')[1] || 'root'}`,
-  skip: shouldSkipRateLimit
+  skip: (req) => shouldSkipRateLimit() || req.method === 'OPTIONS'
 };
 
 if (shouldSkipRateLimit()) {
@@ -134,3 +146,4 @@ if (httpsOptions) {
     console.log(`gateway http fallback on ${config.httpPort}`);
   });
 }
+

@@ -2,21 +2,23 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 
-# Dépendances (cache Docker)
 COPY package*.json ./
 RUN npm ci
 
-# Code puis build
 COPY . .
 RUN npm run build
 
 
 # ===== 2) Runtime =====
-FROM nginx:alpine
-# On remplace la conf nginx par une conf SPA (Vite => index.html fallback)
+FROM nginx:1.27-alpine
+
+# Nettoie la conf par défaut (bonne pratique)
+RUN rm -f /etc/nginx/conf.d/default.conf
+
+# Conf SPA (fallback index.html)
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# On ne copie que le résultat du build
+# Résultat du build
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80

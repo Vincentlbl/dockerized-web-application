@@ -16,8 +16,20 @@ import { requireAuth, requireAdmin } from './middleware.js';
 
 const app = express();
 
+const allowedOrigins = new Set([config.frontendOrigin]);
+if (config.frontendOrigin.startsWith('https://')) {
+  allowedOrigins.add(config.frontendOrigin.replace(/^https:/, 'http:'));
+} else if (config.frontendOrigin.startsWith('http://')) {
+  allowedOrigins.add(config.frontendOrigin.replace(/^http:/, 'https:'));
+}
+const allowedOriginList = Array.from(allowedOrigins);
+
 const corsOptions = {
-  origin: config.frontendOrigin,
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.has(origin)) return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -32,7 +44,7 @@ app.use(helmet({
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", 'https:', "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:'],
-      connectSrc: ["'self'", corsOptions.origin],
+      connectSrc: ["'self'", ...allowedOriginList],
       frameAncestors: ["'none'"]
     }
   },
@@ -52,11 +64,14 @@ app.use(express.json({
 app.use(cookieParser());
 app.use(morgan('combined'));
 
+const shouldSkipRateLimit = () => process.env.DISABLE_RATE_LIMIT === 'true';
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => shouldSkipRateLimit() || req.method === 'OPTIONS',
   message: 'Too many login attempts. Try again later.'
 });
 
@@ -223,3 +238,4 @@ app.use((req, res) => res.status(404).json({ message: 'Not found' }));
 app.listen(config.port, () => {
   console.log(`auth-service listening on ${config.port}`);
 });
+
