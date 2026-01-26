@@ -1,0 +1,121 @@
+# Network Policies
+# =================
+# Définit les règles de communication entre les pods pour sécuriser le réseau interne
+
+# Politique par défaut: deny all ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: ticketing-app
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+# Autoriser le trafic vers le frontend depuis l'Ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-front
+  namespace: ticketing-app
+spec:
+  podSelector:
+    matchLabels:
+      app: front
+  policyTypes:
+    - Ingress
+  ingress:
+    - from: []  # Autoriser depuis l'extérieur (Ingress Controller)
+      ports:
+        - protocol: TCP
+          port: 80
+
+---
+# Autoriser le trafic vers le gateway depuis l'Ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-gateway
+  namespace: ticketing-app
+spec:
+  podSelector:
+    matchLabels:
+      app: gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from: []  # Autoriser depuis l'extérieur (Ingress Controller)
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# Autoriser le gateway à communiquer avec auth-service
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-to-auth
+  namespace: ticketing-app
+spec:
+  podSelector:
+    matchLabels:
+      app: auth-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: gateway
+      ports:
+        - protocol: TCP
+          port: 4000
+
+---
+# Autoriser le gateway à communiquer avec api-service
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-to-api
+  namespace: ticketing-app
+spec:
+  podSelector:
+    matchLabels:
+      app: api-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: gateway
+      ports:
+        - protocol: TCP
+          port: 5000
+
+---
+# Autoriser auth-service et api-service à communiquer avec la base de données
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-to-db
+  namespace: ticketing-app
+spec:
+  podSelector:
+    matchLabels:
+      app: db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: auth-service
+        - podSelector:
+            matchLabels:
+              app: api-service
+      ports:
+        - protocol: TCP
+          port: 5432

@@ -1,0 +1,124 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: ticketing-app
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: ticketing-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: auth-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: auth-service
+        app.kubernetes.io/name: auth-service
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: auth-service
+          image: auth-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 4000
+              name: http
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: DATABASE_URL
+            - name: JWT_ACCESS_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secrets
+                  key: JWT_ACCESS_SECRET
+            - name: JWT_REFRESH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secrets
+                  key: JWT_REFRESH_SECRET
+            - name: AUTH_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-config
+                  key: AUTH_PORT
+            - name: ACCESS_TOKEN_EXPIRES
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-config
+                  key: ACCESS_TOKEN_EXPIRES
+            - name: REFRESH_TOKEN_EXPIRES
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-config
+                  key: REFRESH_TOKEN_EXPIRES
+            - name: COOKIE_DOMAIN
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-config
+                  key: COOKIE_DOMAIN
+            - name: SECURE_COOKIES
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-config
+                  key: SECURE_COOKIES
+            - name: ACCOUNT_LOCK_THRESHOLD
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-config
+                  key: ACCOUNT_LOCK_THRESHOLD
+            - name: ACCOUNT_LOCK_MS
+              valueFrom:
+                configMapKeyRef:
+                  name: auth-config
+                  key: ACCOUNT_LOCK_MS
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: ticketing-app
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/part-of: ticketing-system
+spec:
+  type: ClusterIP
+  selector:
+    app: auth-service
+  ports:
+    - port: 4000
+      targetPort: 4000
+      name: http

@@ -1,0 +1,140 @@
+# JUSTIFICATION: Base de données internalisée dans le cluster
+# ============================================================
+# La base de données PostgreSQL est déployée DANS le cluster Kubernetes pour les raisons suivantes:
+#
+# 1. ENVIRONNEMENT DE DÉVELOPPEMENT/TEST: Pour un environnement de dev/test, une DB interne
+#    simplifie le déploiement et réduit les coûts.
+#
+# 2. LATENCE RÉDUITE: Communication intra-cluster plus rapide qu'avec une DB externe.
+#
+# 3. ISOLATION: La DB n'est accessible que depuis le cluster (pas d'exposition externe).
+#
+# 4. PERSISTANCE: Utilisation d'un PersistentVolumeClaim pour garantir la persistance des données.
+#
+# POUR LA PRODUCTION: Il serait recommandé d'utiliser une solution managée comme:
+# - Azure Database for PostgreSQL
+# - Amazon RDS
+# - Google Cloud SQL
+# Cela offrirait: backups automatiques, haute disponibilité, scaling, et maintenance simplifiée.
+# ============================================================
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: db-pvc
+  namespace: ticketing-app
+  labels:
+    app.kubernetes.io/name: db
+    app.kubernetes.io/part-of: ticketing-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db
+  namespace: ticketing-app
+  labels:
+    app.kubernetes.io/name: db
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: ticketing-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db
+  strategy:
+    type: Recreate  # Important pour les bases de données avec volumes persistants
+  template:
+    metadata:
+      labels:
+        app: db
+        app.kubernetes.io/name: db
+        app.kubernetes.io/component: database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: POSTGRES_DB
+          volumeMounts:
+            - name: db-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-script
+              mountPath: /docker-entrypoint-initdb.d
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - $(POSTGRES_USER)
+                - -d
+                - $(POSTGRES_DB)
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - $(POSTGRES_USER)
+                - -d
+                - $(POSTGRES_DB)
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: db-data
+          persistentVolumeClaim:
+            claimName: db-pvc
+        - name: init-script
+          configMap:
+            name: db-init-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  namespace: ticketing-app
+  labels:
+    app.kubernetes.io/name: db
+    app.kubernetes.io/part-of: ticketing-system
+spec:
+  type: ClusterIP
+  selector:
+    app: db
+  ports:
+    - port: 5432
+      targetPort: 5432
+      name: postgres
